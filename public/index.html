@@ -1,116 +1,20 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeaveFlow | Leave Management</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=https://leavemanagements.onrender.com">
+    <title>Leave Management System</title>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Leave<span>Flow</span></div>
-    <div class="user">Employee Portal</div>
-  </header>
-
-  <main class="container">
-    <section class="welcome">
-      <div>
-        <p class="eyebrow">EMPLOYEE SELF SERVICE</p>
-        <h1>Leave Management</h1>
-        <p>Manage your time off, apply for leave, and track requests.</p>
-      </div>
-      <div class="avatar">E</div>
-    </section>
-
-    <h2>My Leave Balance</h2>
-    <section class="balances">
-      <article class="balance-card">
-        <div class="symbol">☀</div>
-        <p>Casual Leave</p>
-        <h3 id="casualBalance">12 <small>days</small></h3>
-        <span>Annual allowance: 12 days</span>
-      </article>
-      <article class="balance-card">
-        <div class="symbol">✚</div>
-        <p>Medical Leave</p>
-        <h3 id="medicalBalance">10 <small>days</small></h3>
-        <span>Annual allowance: 10 days</span>
-      </article>
-      <article class="balance-card">
-        <div class="symbol">◷</div>
-        <p>Pending Requests</p>
-        <h3 id="pendingCount">0</h3>
-        <span>Awaiting manager decision</span>
-      </article>
-    </section>
-
-    <section class="panel">
-      <h2>Apply for Leave</h2>
-      <p class="muted">Fill in your details to submit a leave request.</p>
-      <form id="leaveForm">
-        <div class="form-grid">
-          <label>Employee Name
-            <input id="employeeName" required placeholder="Enter your name">
-          </label>
-          <label>Employee Email
-            <input id="employeeEmail" type="email" required placeholder="you@company.com">
-          </label>
-          <label>Leave Type
-            <select id="leaveType" required>
-              <option value="Casual Leave">Casual Leave</option>
-              <option value="Medical Leave">Medical Leave</option>
-            </select>
-          </label>
-          <label>Start Date
-            <input id="startDate" type="date" required>
-          </label>
-          <label>End Date
-            <input id="endDate" type="date" required>
-          </label>
-          <label>Reason
-            <input id="reason" required placeholder="Reason for leave">
-          </label>
-        </div>
-        <button type="submit">Submit Leave Request</button>
-        <p id="formMessage" role="status"></p>
-      </form>
-    </section>
-
-    <section class="panel">
-      <h2>My Leave Requests</h2>
-      <p class="muted">Check the status of your applications.</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th></tr></thead>
-          <tbody id="myRequests">
-            <tr><td colspan="4">No requests submitted yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel manager-panel">
-      <h2>Manager Approval Dashboard</h2>
-      <p class="muted">The manager can approve or reject submitted leave requests.</p>
-      <label class="manager-label">Manager access code
-        <input id="managerCode" type="password" placeholder="Enter manager code">
-      </label>
-      <button type="button" id="managerLogin">Open Manager Dashboard</button>
-      <p id="managerMessage" role="status"></p>
-      <div id="managerArea" hidden>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Employee</th><th>Leave</th><th>Dates</th><th>Days</th><th>Reason</th><th>Decision</th></tr></thead>
-            <tbody id="managerRequests">
-              <tr><td colspan="6">No requests to review.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-    <footer>LeaveFlow · Leave Management System</footer>
-  </main>
-  <script src="script.js"></script>
+    <h2>Opening Leave Management System...</h2>
+    <p>If you are not redirected, 
+        <a href="https://leavemanagements.onrender.com">
+            Click here to open the project
+        </a>.
+    </p>
+    <script>
+        window.location.replace("https://leavemanagements.onrender.com");
+    </script>
 </body>
 </html>
