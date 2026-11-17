@@ -1,14 +1,318 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leave Management System</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leave Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="app"></div>
-    <script src="script.js"></script>
+  <div id="app">
+    <!-- LOGIN SCREEN -->
+    <section id="loginView" class="view-screen active">
+      <div class="auth-wrapper">
+        <div class="auth-card">
+          <!-- Left Hero Panel -->
+          <div class="auth-hero">
+            <h1 class="hero-title">Leave Management<br>System</h1>
+            <p class="hero-desc">
+              Manage employee leave requests with ease. Apply for leave, track application status, and manage approvals in one place.
+            </p>
+          </div>
+
+          <!-- Right Login Form Panel -->
+          <div class="auth-form-container">
+            <h2 class="form-title" id="authTitle">Welcome Back!</h2>
+            <p class="form-subtitle" id="authSubtitle">Login to access your dashboard.</p>
+
+            <form id="authForm" autocomplete="off">
+              <!-- Name field for registration only -->
+              <div class="form-group" id="nameGroup" style="display: none;">
+                <label for="authName">Full Name</label>
+                <input type="text" id="authName" placeholder="Enter your full name">
+              </div>
+
+              <div class="form-group">
+                <label for="authEmail">Email Address</label>
+                <input type="email" id="authEmail" value="shivi@gmail.com" required placeholder="name@example.com">
+              </div>
+
+              <div class="form-group">
+                <label for="authPassword">Password</label>
+                <input type="password" id="authPassword" value="password123" required placeholder="Enter password">
+              </div>
+
+              <div class="form-group">
+                <label for="authRole">Account Role</label>
+                <select id="authRole" required>
+                  <option value="Employee" selected>Employee</option>
+                  <option value="Manager">Manager</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block" id="authSubmitBtn">Login</button>
+            </form>
+
+            <div class="auth-footer">
+              <span id="authToggleText">Don't have an account?</span>
+              <a href="javascript:void(0)" id="authToggleLink">Register</a>
+            </div>
+
+            <!-- Demo Quick-Fill Bar -->
+            <div class="demo-helpers">
+              <span>Quick Login Demo:</span>
+              <div class="demo-buttons">
+                <button type="button" class="demo-chip" onclick="fillDemo('shivi@gmail.com', 'Employee')">Employee (shivi)</button>
+                <button type="button" class="demo-chip" onclick="fillDemo('kungumashivi7@gmail.com', 'Employee')">Employee (s)</button>
+                <button type="button" class="demo-chip" onclick="fillDemo('ammu@gmail.com', 'Manager')">Manager (ammu)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EMPLOYEE DASHBOARD -->
+    <section id="employeeView" class="view-screen">
+      <!-- Navbar -->
+      <nav class="top-navbar">
+        <div class="navbar-container">
+          <div class="navbar-brand">Leave Management System</div>
+          <button class="btn btn-logout" onclick="handleLogout()">Logout</button>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="dashboard-main">
+        <header class="welcome-header">
+          <h1 class="welcome-title" id="empWelcomeTitle">Welcome, shivi!</h1>
+          <p class="welcome-subtitle" id="empWelcomeSubtitle">Employee Dashboard · shivi@gmail.com</p>
+        </header>
+
+        <!-- Stats Row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Casual Leave Balance</div>
+            <div class="stat-value" id="empCasualBalance">12 / 12</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Medical Leave Balance</div>
+            <div class="stat-value" id="empMedicalBalance">10 / 10</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Pending Requests</div>
+            <div class="stat-value" id="empPendingCount">0</div>
+          </div>
+        </div>
+
+        <!-- Apply for Leave Section -->
+        <section class="content-card">
+          <h2 class="card-title">Apply for Leave</h2>
+          <form id="applyLeaveForm" class="leave-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="applyEmpName">Employee Name</label>
+                <input type="text" id="applyEmpName" readonly>
+              </div>
+              <div class="form-group">
+                <label for="applyEmpEmail">Email Address</label>
+                <input type="email" id="applyEmpEmail" readonly>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="applyLeaveType">Leave Type</label>
+                <select id="applyLeaveType" required>
+                  <option value="Casual Leave">Casual Leave</option>
+                  <option value="Medical Leave">Medical Leave</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="applyStartDate">Start Date</label>
+                <input type="date" id="applyStartDate" required>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="applyEndDate">End Date</label>
+                <input type="date" id="applyEndDate" required>
+              </div>
+              <div class="form-group">
+                <label for="applyReason">Reason for Leave</label>
+                <input type="text" id="applyReason" placeholder="Enter reason for leave..." required>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Apply Leave</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Employee Leave History Section -->
+        <section class="content-card">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">My Leave History</h2>
+              <p class="card-subtitle">Track your submitted leave applications, approvals, and manager remarks.</p>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Leave Type</th>
+                  <th>Dates</th>
+                  <th>Days</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Manager Remarks</th>
+                  <th>Applied On</th>
+                </tr>
+              </thead>
+              <tbody id="empHistoryTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- MANAGER DASHBOARD -->
+    <section id="managerView" class="view-screen">
+      <!-- Navbar -->
+      <nav class="top-navbar">
+        <div class="navbar-container">
+          <div class="navbar-brand">Leave Management System</div>
+          <button class="btn btn-logout" onclick="handleLogout()">Logout</button>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="dashboard-main">
+        <header class="welcome-header">
+          <h1 class="welcome-title" id="mgrWelcomeTitle">Welcome, ammu!</h1>
+          <p class="welcome-subtitle" id="mgrWelcomeSubtitle">Manager Dashboard · ammu@gmail.com</p>
+        </header>
+
+        <!-- Stats Row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-value" id="mgrTotalRequests">8</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Pending Requests</div>
+            <div class="stat-value" id="mgrPendingRequests">3</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Approved Requests</div>
+            <div class="stat-value" id="mgrApprovedRequests">3</div>
+          </div>
+        </div>
+
+        <!-- Employee Leave Requests Section -->
+        <section class="content-card">
+          <h2 class="card-title">Employee Leave Requests</h2>
+          <div class="search-box-wrapper">
+            <label for="mgrSearchInput" class="search-label">Search by employee name or email</label>
+            <div class="search-input-group">
+              <input type="text" id="mgrSearchInput" placeholder="Search employees..." oninput="handleManagerSearch()">
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Email</th>
+                  <th>Leave Type</th>
+                  <th>Dates</th>
+                  <th>Days</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="mgrRequestsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- MODAL: Manager Review (Accept / Reject with Reason) -->
+    <div id="reviewModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="reviewModalTitle">Review Leave Request</h3>
+          <button type="button" class="modal-close" onclick="closeReviewModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="employee-meta-box" id="reviewModalEmpInfo"></div>
+          <div class="form-group" style="margin-top: 14px;">
+            <label for="reviewReasonInput" id="reviewReasonLabel">Manager Reason / Comments</label>
+            <textarea id="reviewReasonInput" rows="3" placeholder="Enter reason for approval or rejection..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeReviewModal()">Cancel</button>
+          <button type="button" class="btn" id="reviewConfirmBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: View Complete Leave History of Employee (Manager Feature) -->
+    <div id="empHistoryModal" class="modal-overlay">
+      <div class="modal-card modal-large">
+        <div class="modal-header">
+          <div>
+            <h3 id="historyModalTitle">Employee Leave History</h3>
+            <p id="historyModalSubtitle" class="modal-subtitle">Review complete past requests and leave usage</p>
+          </div>
+          <button type="button" class="modal-close" onclick="closeHistoryModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="history-stats-row" id="historyModalStats"></div>
+          <div class="table-responsive" style="margin-top: 18px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Leave Type</th>
+                  <th>Dates</th>
+                  <th>Days</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Manager Remarks</th>
+                  <th>Applied On</th>
+                </tr>
+              </thead>
+              <tbody id="historyModalTableBody">
+                <!-- Dynamically loaded -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeHistoryModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toastNotification" class="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
