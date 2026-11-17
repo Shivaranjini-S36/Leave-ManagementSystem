@@ -1,10 +1,11 @@
 
+require("dotenv").config();
+
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
-const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const path = require("path");
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,255 +13,338 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Display the homepage
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
 const client = new MongoClient(process.env.MONGODB_URI);
 
-let leaveRequests;
+let users;
+let leaves;
 
-// Display database records in the terminal
-async function showDatabaseRecords() {
+const JWT_SECRET = process.env.JWT_SECRET;
+
+function createToken(user) {
+    return jwt.sign(
+        {
+            id: user._id.toString(),
+            name: user.name,
+            email: user.email,
+            role: user.role
+        },
+        JWT_SECRET,
+        { expiresIn: "1d" }
+    );
+}
+
+function authenticate(req, res, next) {
+    const header = req.headers.authorization;
+
+    if (!header || !header.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "Please log in first." });
+    }
+
     try {
-        const records = await leaveRequests
-            .find()
-            .sort({ createdAt: -1 })
-            .toArray();
-
-        console.log("\nEMPLOYEE LEAVE DATABASE");
-        console.log("Total records:", records.length);
-
-        console.table(records.map(record => ({
-            ID: record._id.toString(),
-            Employee: record.employeeName,
-            Email: record.employeeEmail,
-            LeaveType: record.leaveType,
-            StartDate: record.startDate,
-            EndDate: record.endDate,
-            AppliedOn: record.createdAt,
-            Status: record.status,
-            Reviewer: record.reviewer || "Not reviewed",
-            Reason: record.reason,
-            RejectionReason: record.rejectionReason || "Not applicable"
-        })));
-    } catch (error) {
-        console.error("Could not display records:", error.message);
+        req.user = jwt.verify(header.split(" ")[1], JWT_SECRET);
+        next();
+    } catch {
+        return res.status(401).json({ message: "Session expired. Please log in again." });
     }
 }
 
+function managerOnly(req, res, next) {
+    if (req.user.role !== "Manager") {
+        return res.status(403).json({ message: "Manager access required." });
+    }
+    next();
+}
+
+function employeeOnly(req, res, next) {
+    if (req.user.role !== "Employee") {
+        return res.status(403).json({ message: "Employee access required." });
+    }
+    next();
+}
+
+// REGISTER
+app.post("/api/register", async (req, res) => {
+    try {
+        const { name, email, password, role, managerCode } = req.body;
+
+        if (!name || !email || !password || !role) {
+            return res.status(400).json({ message: "Please fill in all fields." });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (!["Employee", "Manager"].includes(role)) {
+            return res.status(400).json({ message: "Invalid role." });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ message: "Password must contain at least 6 characters." });
+        }
+
+        if (role === "Manager" &&
+            (!process.env.MANAGER_INVITE_CODE ||
+             managerCode !== process.env.MANAGER_INVITE_CODE)) {
+            return res.status(403).json({ message: "Invalid manager invitation code." });
+        }
+
+        const existing = await users.findOne({ email: normalizedEmail });
+
+        if (existing) {
+            return res.status(409).json({ message: "Email already registered." });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        const newUser = {
+            name: name.trim(),
+            email: normalizedEmail,
+            password: hashedPassword,
+            role,
+            createdAt: new Date()
+        };
+
+        const result = await users.insertOne(newUser);
+        newUser._id = result.insertedId;
+
+        console.log("New user registered:", {
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role
+        });
+
+        res.status(201).json({
+            message: "Registration successful.",
+            token: createToken(newUser),
+            user: {
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role
+            }
+        });
+    } catch (error) {
+        console.error("Registration error:", error);
+        res.status(500).json({ message: "Registration failed." });
+    }
+});
+
+// LOGIN
+app.post("/api/login", async (req, res) => {
+    try {
+        const { email, password, role } = req.body;
+
+        if (!email || !password || !role) {
+            return res.status(400).json({ message: "Enter email, password and role." });
+        }
+
+        const user = await users.findOne({
+            email: email.trim().toLowerCase()
+        });
+
+        if (!user || user.role !== role) {
+            return res.status(401).json({ message: "Invalid login details or role." });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.password);
+
+        if (!validPassword) {
+            return res.status(401).json({ message: "Invalid login details or role." });
+        }
+
+        console.log("User logged in:", user.email, user.role);
+
+        res.json({
+            message: "Login successful.",
+            token: createToken(user),
+            user: {
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
+        });
+    } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ message: "Login failed." });
+    }
+});
+
+// EMPLOYEE: APPLY FOR LEAVE
+app.post("/api/leaves", authenticate, employeeOnly, async (req, res) => {
+    try {
+        const { leaveType, startDate, endDate, reason } = req.body;
+
+        if (!["Casual Leave", "Medical Leave"].includes(leaveType) ||
+            !startDate || !endDate || !reason) {
+            return res.status(400).json({ message: "Please provide valid leave details." });
+        }
+
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+            return res.status(400).json({ message: "Invalid leave dates." });
+        }
+
+        const request = {
+            employeeName: req.user.name,
+            employeeEmail: req.user.email,
+            leaveType,
+            startDate,
+            endDate,
+            reason: reason.trim(),
+            status: "Pending",
+            rejectionReason: "",
+            reviewer: "",
+            createdAt: new Date()
+        };
+
+        const result = await leaves.insertOne(request);
+
+        console.log("New leave request:", {
+            id: result.insertedId.toString(),
+            employee: request.employeeEmail,
+            status: request.status
+        });
+
+        res.status(201).json({
+            message: "Leave request submitted.",
+            leave: { ...request, _id: result.insertedId }
+        });
+    } catch (error) {
+        console.error("Leave submission error:", error);
+        res.status(500).json({ message: "Could not submit leave." });
+    }
+});
+
+// EMPLOYEE: VIEW OWN LEAVES
+app.get("/api/leaves/mine", authenticate, employeeOnly, async (req, res) => {
+    try {
+        const records = await leaves.find({
+            employeeEmail: req.user.email
+        }).sort({ createdAt: -1 }).toArray();
+
+        res.json(records);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Could not load your leave records." });
+    }
+});
+
+// MANAGER: VIEW ALL LEAVES
+app.get("/api/leaves", authenticate, managerOnly, async (req, res) => {
+    try {
+        const records = await leaves.find({}).sort({ createdAt: -1 }).toArray();
+        res.json(records);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Could not load leave records." });
+    }
+});
+
+// MANAGER: APPROVE OR REJECT
+app.patch("/api/leaves/:id", authenticate, managerOnly, async (req, res) => {
+    try {
+        const { status, rejectionReason } = req.body;
+
+        if (!["Approved", "Declined"].includes(status)) {
+            return res.status(400).json({ message: "Invalid leave status." });
+        }
+
+        if (status === "Declined" && !rejectionReason?.trim()) {
+            return res.status(400).json({ message: "Please provide a rejection reason." });
+        }
+
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ message: "Invalid leave ID." });
+        }
+
+        const result = await leaves.updateOne(
+            { _id: new ObjectId(req.params.id), status: "Pending" },
+            {
+                $set: {
+                    status,
+                    rejectionReason: status === "Declined" ? rejectionReason.trim() : "",
+                    reviewer: req.user.name,
+                    reviewedAt: new Date()
+                }
+            }
+        );
+
+        if (!result.matchedCount) {
+            return res.status(404).json({ message: "Pending leave request not found." });
+        }
+
+        console.log("Leave updated:", req.params.id, status);
+
+        res.json({ message: `Leave ${status.toLowerCase()} successfully.` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Could not update leave." });
+    }
+});
+
+// DATABASE CHECK FOR TERMINAL
+app.get("/api/leaves/database", authenticate, managerOnly, async (req, res) => {
+    try {
+        const records = await leaves.find({}).toArray();
+
+        console.log("\n========== LEAVE DATABASE ==========");
+        console.table(records.map(record => ({
+            employee: record.employeeName,
+            email: record.employeeEmail,
+            type: record.leaveType,
+            start: record.startDate,
+            end: record.endDate,
+            status: record.status
+        })));
+
+        res.json(records);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Database query failed." });
+    }
+});
+
 async function startServer() {
     try {
+        if (!process.env.MONGODB_URI || !JWT_SECRET) {
+            throw new Error("MONGODB_URI and JWT_SECRET must be configured.");
+        }
+
         await client.connect();
 
-        const database = client.db("leavemanagement");
-        leaveRequests = database.collection("leaveRequests");
+        const db = client.db("leavemanagement");
+
+        users = db.collection("users");
+        leaves = db.collection("leaveRequests");
+
+        await users.createIndex({ email: 1 }, { unique: true });
 
         console.log("MongoDB connected successfully!");
+        console.log("Database: leavemanagement");
+        console.log("Collections: users, leaveRequests");
 
-        await showDatabaseRecords();
+        console.log("\n========== REGISTERED USERS ==========");
+        const registeredUsers = await users.find({}).toArray();
+        console.table(registeredUsers.map(user => ({
+            name: user.name,
+            email: user.email,
+            role: user.role
+        })));
 
-        // STUDENT: Submit a leave request
-        app.post("/api/leaves", async (req, res) => {
-            try {
-                const {
-                    employeeName,
-                    employeeEmail,
-                    leaveType,
-                    startDate,
-                    endDate,
-                    reason
-                } = req.body;
+        console.log("\n========== EXISTING LEAVE RECORDS ==========");
+        const existingLeaves = await leaves.find({}).toArray();
+        console.table(existingLeaves.map(record => ({
+            employee: record.employeeName,
+            email: record.employeeEmail,
+            type: record.leaveType,
+            status: record.status
+        })));
 
-                if (
-                    !employeeName ||
-                    !employeeEmail ||
-                    !leaveType ||
-                    !startDate ||
-                    !endDate ||
-                    !reason
-                ) {
-                    return res.status(400).json({
-                        message: "Please fill in every field."
-                    });
-                }
-
-                if (!["Casual Leave", "Medical Leave"].includes(leaveType)) {
-                    return res.status(400).json({
-                        message: "Invalid leave type."
-                    });
-                }
-
-                if (
-                    Number.isNaN(Date.parse(startDate)) ||
-                    Number.isNaN(Date.parse(endDate)) ||
-                    endDate < startDate
-                ) {
-                    return res.status(400).json({
-                        message: "Please enter valid leave dates."
-                    });
-                }
-
-                const request = {
-                    employeeName,
-                    employeeEmail,
-                    leaveType,
-                    startDate,
-                    endDate,
-                    reason,
-                    status: "Pending",
-                    reviewer: "",
-                    rejectionReason: "",
-                    createdAt: new Date()
-                };
-
-                const result = await leaveRequests.insertOne(request);
-
-                await showDatabaseRecords();
-
-                res.status(201).json({
-                    message: "Leave request submitted successfully!",
-                    id: result.insertedId
-                });
-
-            } catch (error) {
-                console.error("Submit leave error:", error);
-
-                res.status(500).json({
-                    message: "Could not submit the leave request."
-                });
-            }
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
         });
-
-        // STUDENT AND MANAGER: Get all leave requests
-        app.get("/api/leaves", async (req, res) => {
-            try {
-                const requests = await leaveRequests
-                    .find()
-                    .sort({ createdAt: -1 })
-                    .toArray();
-
-                res.json(requests);
-
-            } catch (error) {
-                console.error("Fetch leaves error:", error);
-
-                res.status(500).json({
-                    message: "Could not load leave requests."
-                });
-            }
-        });
-
-        // MANAGER: Approve or reject a leave request
-        app.patch("/api/leaves/:id", async (req, res) => {
-            try {
-                const {
-                    status,
-                    reviewer,
-                    rejectionReason
-                } = req.body;
-
-                if (!["Approved", "Declined"].includes(status)) {
-                    return res.status(400).json({
-                        message: "Choose Approved or Declined."
-                    });
-                }
-
-                if (!ObjectId.isValid(req.params.id)) {
-                    return res.status(400).json({
-                        message: "Invalid leave request ID."
-                    });
-                }
-
-                if (!reviewer || !reviewer.trim()) {
-                    return res.status(400).json({
-                        message: "Please enter the manager's name."
-                    });
-                }
-
-                // Rejection reason is compulsory when rejecting.
-                if (
-                    status === "Declined" &&
-                    (!rejectionReason || !rejectionReason.trim())
-                ) {
-                    return res.status(400).json({
-                        message: "Please provide a reason for rejecting this leave request."
-                    });
-                }
-
-                const result = await leaveRequests.updateOne(
-                    {
-                        _id: new ObjectId(req.params.id),
-                        status: "Pending"
-                    },
-                    {
-                        $set: {
-                            status,
-                            reviewer: reviewer.trim(),
-                            rejectionReason:
-                                status === "Declined"
-                                    ? rejectionReason.trim()
-                                    : "",
-                            reviewedAt: new Date()
-                        }
-                    }
-                );
-
-                if (result.matchedCount === 0) {
-                    return res.status(404).json({
-                        message: "Request not found or already reviewed."
-                    });
-                }
-
-                await showDatabaseRecords();
-
-                res.json({
-                    message: `Leave request ${status.toLowerCase()} successfully.`
-                });
-
-            } catch (error) {
-                console.error("Update leave error:", error);
-
-                res.status(500).json({
-                    message: "Could not update the leave request."
-                });
-            }
-        });
-
-        // Display database records through the API
-        app.get("/api/leaves/database", async (req, res) => {
-            try {
-                await showDatabaseRecords();
-
-                const records = await leaveRequests
-                    .find()
-                    .sort({ createdAt: -1 })
-                    .toArray();
-
-                res.json({
-                    message: "Database records retrieved successfully.",
-                    totalRecords: records.length,
-                    records
-                });
-
-            } catch (error) {
-                console.error("Database display error:", error);
-
-                res.status(500).json({
-                    message: "Could not display database records."
-                });
-            }
-        });
-
-        app.listen(PORT, "0.0.0.0", () => {
-            console.log(
-                `Leave Management System running on port ${PORT}`
-            );
-        });
-
     } catch (error) {
-        console.error("Could not connect to MongoDB:", error.message);
+        console.error("Server startup failed:", error);
         process.exit(1);
     }
 }

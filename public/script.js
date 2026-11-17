@@ -1,552 +1,590 @@
 
-const POLICY = {
-  "Casual Leave": 12,
-  "Medical Leave": 10
-};
+const API_URL = "/api";
 
+let token = localStorage.getItem("leaveToken") || "";
+let currentUser = JSON.parse(localStorage.getItem("leaveUser") || "null");
 let leaves = [];
-let employeeEmail = localStorage.getItem("employeeEmail") || "";
 
-document.body.innerHTML = `
-<style>
-*{box-sizing:border-box}
-body{margin:0;font-family:Arial,sans-serif;background:#f3f5fb;color:#24304a}
-header{background:#293c72;color:white;padding:22px 6%;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-header h1{margin:0;font-size:24px}
-header select{padding:10px;border-radius:6px}
-main{max-width:1100px;margin:28px auto;padding:0 18px}
-.panel{background:white;padding:24px;border-radius:12px;margin-bottom:22px;box-shadow:0 3px 15px #17255410}
-h2{margin-top:0;color:#293c72}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
-.stat{background:#f3f6ff;padding:18px;border-radius:10px;border:1px solid #e1e7f5}
-.stat strong{display:block;font-size:25px;margin-top:8px;color:#293c72}
-label{display:block;font-weight:bold;font-size:14px}
-input,select,textarea{width:100%;margin-top:7px;padding:11px;border:1px solid #d5dbea;border-radius:6px;font:inherit}
-textarea{min-height:80px;resize:vertical}
-button{border:0;border-radius:6px;padding:11px 16px;cursor:pointer;color:white;background:#293c72;font-weight:bold;margin:5px 5px 5px 0}
-button:hover{opacity:.88}
-.approve{background:#16834a}
-.decline{background:#c03945}
-.card{border:1px solid #e1e5ef;border-radius:9px;padding:18px;margin-top:14px;overflow-wrap:anywhere}
-.status{display:inline-block;border-radius:20px;padding:6px 12px;font-size:13px;font-weight:bold}
-.Pending{background:#fff0c2;color:#8a5a00}
-.Approved{background:#d9f8e5;color:#126b3b}
-.Declined{background:#ffe0e0;color:#a32626}
-.muted{color:#667085;font-size:14px}
-.full{grid-column:1/-1}
-.notice{padding:12px;border-radius:8px;background:#eef3ff;margin-bottom:16px}
-.rejection{background:#fff0f0;border-left:4px solid #c03945;padding:12px;margin-top:12px;border-radius:5px}
-@media(max-width:700px){
-.cards{grid-template-columns:repeat(2,minmax(0,1fr))}
-.grid{grid-template-columns:1fr}
-.full{grid-column:auto}
-header h1{font-size:20px}
-}
-</style>
+const app = document.getElementById("app");
 
-<header>
-  <h1>Leave Management System</h1>
-  <label style="color:white">Dashboard
-    <select id="role" style="width:auto">
-      <option value="employee">Employee</option>
-      <option value="manager">Manager / Approver</option>
-    </select>
-  </label>
-</header>
-
-<main>
-  <section id="employeePanel">
-    <section class="panel">
-      <h2>My Leave Balance</h2>
-      <p class="muted">Balances are based on the current policy and approved requests.</p>
-      <div id="balanceCards" class="cards"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Apply for Leave</h2>
-      <form id="leaveForm" class="grid">
-        <label>Employee Name
-          <input id="employeeName" required placeholder="Enter your name">
-        </label>
-
-        <label>Employee Email
-          <input id="employeeEmail" type="email" required placeholder="Enter your email">
-        </label>
-
-        <label>Leave Type
-          <select id="leaveType" required>
-            <option value="">Select leave type</option>
-            <option>Casual Leave</option>
-            <option>Medical Leave</option>
-          </select>
-        </label>
-
-        <label>Start Date
-          <input id="startDate" type="date" required>
-        </label>
-
-        <label>End Date
-          <input id="endDate" type="date" required>
-        </label>
-
-        <label class="full">Reason for Leave
-          <textarea id="reason" required placeholder="Manually enter your reason for applying leave"></textarea>
-        </label>
-
-        <div class="full">
-          <button type="submit">Submit Leave Request</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="panel">
-      <h2>My Leave History</h2>
-      <p class="muted">View your application dates, leave details and decisions.</p>
-      <div id="employeeHistory"></div>
-    </section>
-  </section>
-
-  <section id="managerPanel" style="display:none">
-    <section class="panel">
-      <h2>Manager Dashboard</h2>
-      <p class="muted">Review pending requests and check each employee's previous leave history.</p>
-
-      <label>Filter by employee email
-        <input id="managerFilter" type="text" placeholder="Enter employee email">
-      </label>
-
-      <button id="refreshButton" type="button">Refresh Requests</button>
-      <div id="managerHistory"></div>
-    </section>
-  </section>
-
-  <p id="message" class="notice" role="status">Connecting to the database...</p>
-</main>
-`;
-
-const $ = id => document.getElementById(id);
-
-function showMessage(text) {
-  $("message").textContent = text;
+function escapeHTML(value = "") {
+    return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[char]);
 }
 
-function daysBetween(start, end) {
-  const a = new Date(start + "T00:00:00Z");
-  const b = new Date(end + "T00:00:00Z");
-  return Math.round((b - a) / 86400000) + 1;
-}
-
-function formatDate(date) {
-  if (!date) return "Not available";
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) return "Not available";
-
-  return value.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric"
-  });
-}
-
-function formatDateTime(date) {
-  if (!date) return "Not available";
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) return "Not available";
-
-  return value.toLocaleString("en-IN");
-}
-
-function makeElement(tag, text, className) {
-  const el = document.createElement(tag);
-
-  if (text !== undefined) el.textContent = text;
-  if (className) el.className = className;
-
-  return el;
-}
-
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
+function showMessage(message, type = "error") {
+    const box = document.getElementById("notice");
+    if (!box) {
+        alert(message);
+        return;
     }
-  });
 
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data.message || "Something went wrong.");
-  }
-
-  return data;
+    box.textContent = message;
+    box.className = `notice ${type}`;
 }
 
-async function loadLeaves() {
-  try {
-    leaves = await api("/api/leaves");
-    render();
-    showMessage("Connected. Leave requests loaded from the server.");
-  } catch (error) {
-    showMessage("Could not load requests: " + error.message);
-  }
-}
-
-function addLine(parent, label, value) {
-  parent.appendChild(
-    makeElement("p", label + ": " + (value || "—"))
-  );
-}
-
-function renderBalances(myLeaves) {
-  const container = $("balanceCards");
-  container.innerHTML = "";
-
-  for (const [type, total] of Object.entries(POLICY)) {
-    const approved = myLeaves
-      .filter(l => l.leaveType === type && l.status === "Approved")
-      .reduce((sum, l) => sum + daysBetween(l.startDate, l.endDate), 0);
-
-    const pending = myLeaves
-      .filter(l => l.leaveType === type && l.status === "Pending")
-      .reduce((sum, l) => sum + daysBetween(l.startDate, l.endDate), 0);
-
-    const card = makeElement("div", undefined, "stat");
-
-    card.appendChild(makeElement("span", type));
-    card.appendChild(
-      makeElement("strong", String(Math.max(0, total - approved)))
-    );
-    card.appendChild(makeElement("p", "Days remaining"));
-    card.appendChild(makeElement("p", "Annual allowance: " + total));
-    card.appendChild(makeElement("p", "Approved / taken: " + approved));
-    card.appendChild(makeElement("p", "Pending: " + pending));
-
-    container.appendChild(card);
-  }
-}
-
-function createLeaveCard(leave, isManager) {
-  const card = makeElement("article", undefined, "card");
-
-  card.appendChild(
-    makeElement(
-      "h3",
-      (leave.employeeName || "Employee") + " — " + leave.leaveType
-    )
-  );
-
-  addLine(card, "Employee email", leave.employeeEmail);
-
-  // New feature: display the date on which leave was applied.
-  addLine(card, "Applied on", formatDateTime(leave.createdAt));
-
-  addLine(card, "Leave dates", leave.startDate + " to " + leave.endDate);
-  addLine(card, "Requested days", daysBetween(leave.startDate, leave.endDate));
-  addLine(card, "Reason for leave", leave.reason);
-
-  card.appendChild(
-    makeElement("span", "Status: " + leave.status, "status " + leave.status)
-  );
-
-  if (leave.reviewer) {
-    addLine(card, "Reviewed by", leave.reviewer);
-  }
-
-  if (leave.reviewedAt) {
-    addLine(card, "Decision date", formatDateTime(leave.reviewedAt));
-  }
-
-  // New feature: display rejection message to the employee.
-  if (leave.status === "Declined") {
-    const rejectionBox = makeElement("div", undefined, "rejection");
-
-    rejectionBox.appendChild(
-      makeElement("strong", "Rejection Message")
-    );
-
-    rejectionBox.appendChild(
-      makeElement("p", leave.rejectionReason || "No rejection message was provided.")
-    );
-
-    card.appendChild(rejectionBox);
-  }
-
-  // Manager controls for pending requests.
-  if (isManager && leave.status === "Pending") {
-    card.appendChild(makeElement("h4", "Review this request"));
-
-    const reviewer = document.createElement("input");
-    reviewer.placeholder = "Enter manager name";
-    reviewer.setAttribute("aria-label", "Manager name");
-    reviewer.required = true;
-
-    card.appendChild(reviewer);
-
-    const rejectionReason = document.createElement("textarea");
-    rejectionReason.placeholder = "Enter the reason if you reject this leave request";
-    rejectionReason.setAttribute("aria-label", "Rejection reason");
-    rejectionReason.style.display = "none";
-
-    card.appendChild(rejectionReason);
-
-    const approve = makeElement("button", "Approve", "approve");
-    approve.type = "button";
-
-    approve.addEventListener("click", () => {
-      updateStatus(leave._id, "Approved", reviewer.value, "");
+async function api(endpoint, options = {}) {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(options.headers || {})
+        }
     });
 
-    const decline = makeElement("button", "Reject", "decline");
-    decline.type = "button";
+    const data = await response.json().catch(() => ({}));
 
-    decline.addEventListener("click", async () => {
-      if (!reviewer.value.trim()) {
-        alert("Please enter the manager's name.");
-        reviewer.focus();
-        return;
-      }
+    if (!response.ok) {
+        if (response.status === 401 && token) {
+            logout(false);
+        }
+        throw new Error(data.message || "Something went wrong.");
+    }
 
-      // First click opens the rejection reason box.
-      if (rejectionReason.style.display === "none") {
-        rejectionReason.style.display = "block";
-        rejectionReason.focus();
-        decline.textContent = "Confirm Rejection";
-        return;
-      }
-
-      if (!rejectionReason.value.trim()) {
-        alert("Please enter a reason for rejecting this leave request.");
-        rejectionReason.focus();
-        return;
-      }
-
-      await updateStatus(
-        leave._id,
-        "Declined",
-        reviewer.value,
-        rejectionReason.value
-      );
-    });
-
-    card.append(approve, decline);
-  }
-
-  return card;
+    return data;
 }
 
-function render() {
-  const isManager = $("role").value === "manager";
+function saveLogin(data) {
+    token = data.token;
+    currentUser = data.user;
 
-  $("employeePanel").style.display = isManager ? "none" : "block";
-  $("managerPanel").style.display = isManager ? "block" : "none";
+    localStorage.setItem("leaveToken", token);
+    localStorage.setItem("leaveUser", JSON.stringify(currentUser));
+}
 
-  if (isManager) {
-    renderManager();
-    return;
-  }
+function logout(showNotice = true) {
+    token = "";
+    currentUser = null;
+    leaves = [];
 
-  const email = employeeEmail.trim().toLowerCase();
+    localStorage.removeItem("leaveToken");
+    localStorage.removeItem("leaveUser");
 
-  const mine = leaves.filter(l =>
-    (l.employeeEmail || "").toLowerCase() === email
-  );
+    renderAuth();
 
-  renderBalances(mine);
+    if (showNotice) {
+        showMessage("You have logged out successfully.", "success");
+    }
+}
 
-  const history = $("employeeHistory");
-  history.innerHTML = "";
+function renderAuth(mode = "login") {
+    app.innerHTML = `
+        <div class="auth-page">
+            <section class="auth-side">
+                <h1>Leave Management System</h1>
+                <p>
+                    Manage employee leave requests with ease.
+                    Apply for leave, track application status,
+                    and manage approvals in one place.
+                </p>
+            </section>
 
-  if (!email) {
-    history.appendChild(
-      makeElement("p", "Enter your email when applying for leave to identify your requests.")
-    );
-    return;
-  }
+            <section class="auth-card">
+                <h2>${mode === "login" ? "Welcome Back!" : "Create Account"}</h2>
+                <p class="muted">
+                    ${mode === "login"
+                        ? "Login to access your dashboard."
+                        : "Register as an employee or manager."}
+                </p>
 
-  if (mine.length === 0) {
-    history.appendChild(
-      makeElement("p", "No leave history found for this email.")
-    );
-    return;
-  }
+                <div id="notice" class="notice"></div>
 
-  mine.sort((a, b) =>
-    new Date(b.createdAt || b.startDate) -
-    new Date(a.createdAt || a.startDate)
-  );
+                <form id="authForm">
+                    ${mode === "register" ? `
+                        <div class="field">
+                            <label>Full Name</label>
+                            <input id="name" required placeholder="Enter your full name">
+                        </div>
+                    ` : ""}
 
-  mine.forEach(l => history.appendChild(createLeaveCard(l, false)));
+                    <div class="field">
+                        <label>Email Address</label>
+                        <input id="email" type="email" required placeholder="Enter your email">
+                    </div>
+
+                    <div class="field">
+                        <label>Password</label>
+                        <input id="password" type="password" required minlength="6"
+                            placeholder="Enter your password">
+                    </div>
+
+                    <div class="field">
+                        <label>Account Role</label>
+                        <select id="role" required>
+                            <option value="Employee">Employee</option>
+                            <option value="Manager">Manager</option>
+                        </select>
+                    </div>
+
+                    ${mode === "register" ? `
+                        <div class="field" id="managerCodeField" style="display:none">
+                            <label>Manager Invitation Code</label>
+                            <input id="managerCode" type="password"
+                                placeholder="Enter manager invitation code">
+                        </div>
+                    ` : ""}
+
+                    <button class="primary-btn" type="submit">
+                        ${mode === "login" ? "Login" : "Create Account"}
+                    </button>
+                </form>
+
+                <p class="switch-text">
+                    ${mode === "login"
+                        ? `Don't have an account?
+                           <button class="link-btn" id="switchMode">Register</button>`
+                        : `Already have an account?
+                           <button class="link-btn" id="switchMode">Login</button>`}
+                </p>
+            </section>
+        </div>
+    `;
+
+    document.getElementById("switchMode").addEventListener("click", () => {
+        renderAuth(mode === "login" ? "register" : "login");
+    });
+
+    const roleSelect = document.getElementById("role");
+
+    if (mode === "register") {
+        const managerField = document.getElementById("managerCodeField");
+
+        roleSelect.addEventListener("change", () => {
+            managerField.style.display =
+                roleSelect.value === "Manager" ? "block" : "none";
+        });
+    }
+
+    document.getElementById("authForm").addEventListener("submit", handleAuth);
+}
+
+async function handleAuth(event) {
+    event.preventDefault();
+
+    const mode = document.querySelector(".auth-card h2").textContent;
+    const isRegister = mode === "Create Account";
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const role = document.getElementById("role").value;
+
+    const body = {
+        email,
+        password,
+        role
+    };
+
+    if (isRegister) {
+        body.name = document.getElementById("name").value.trim();
+
+        if (role === "Manager") {
+            body.managerCode = document.getElementById("managerCode").value;
+        }
+    }
+
+    const button = document.querySelector("#authForm button[type='submit']");
+    button.disabled = true;
+    button.textContent = "Please wait...";
+
+    try {
+        const data = await api(isRegister ? "/register" : "/login", {
+            method: "POST",
+            body: JSON.stringify(body)
+        });
+
+        saveLogin(data);
+        await renderDashboard();
+    } catch (error) {
+        showMessage(error.message);
+        button.disabled = false;
+        button.textContent = isRegister ? "Create Account" : "Login";
+    }
+}
+
+function daysBetween(startDate, endDate) {
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+
+    return Math.floor((end - start) / 86400000) + 1;
+}
+
+function formatDate(value) {
+    if (!value) return "-";
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (isNaN(date.getTime())) return escapeHTML(value);
+
+    return date.toLocaleDateString("en-IN");
+}
+
+function statusBadge(status) {
+    return `<span class="status ${escapeHTML(status)}">${escapeHTML(status)}</span>`;
+}
+
+async function renderDashboard() {
+    if (!token || !currentUser) {
+        renderAuth();
+        return;
+    }
+
+    try {
+        if (currentUser.role === "Employee") {
+            leaves = await api("/leaves/mine");
+            renderEmployee();
+        } else if (currentUser.role === "Manager") {
+            leaves = await api("/leaves");
+            renderManager();
+        } else {
+            logout();
+        }
+    } catch (error) {
+        app.innerHTML = `<div class="auth-card">
+            <h2>Unable to load dashboard</h2>
+            <p class="muted">${escapeHTML(error.message)}</p>
+            <button class="primary-btn" id="tryAgain">Try Again</button>
+            <button class="logout-btn" id="logoutNow">Logout</button>
+        </div>`;
+
+        document.getElementById("tryAgain").onclick = renderDashboard;
+        document.getElementById("logoutNow").onclick = () => logout();
+    }
+}
+
+function renderEmployee() {
+    const casualUsed = leaves
+        .filter(l => l.leaveType === "Casual Leave" && l.status === "Approved")
+        .reduce((sum, l) => sum + daysBetween(l.startDate, l.endDate), 0);
+
+    const medicalUsed = leaves
+        .filter(l => l.leaveType === "Medical Leave" && l.status === "Approved")
+        .reduce((sum, l) => sum + daysBetween(l.startDate, l.endDate), 0);
+
+    const casualTotal = 12;
+    const medicalTotal = 10;
+
+    app.innerHTML = `
+        <main class="dashboard">
+            <header class="topbar">
+                <h2>Leave Management System</h2>
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </header>
+
+            <section class="welcome">
+                <h2>Welcome, ${escapeHTML(currentUser.name)}!</h2>
+                <p>Employee Dashboard · ${escapeHTML(currentUser.email)}</p>
+            </section>
+
+            <section class="stats">
+                <div class="stat-card">
+                    <p>Casual Leave Balance</p>
+                    <h2>${Math.max(0, casualTotal - casualUsed)} / ${casualTotal}</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Medical Leave Balance</p>
+                    <h2>${Math.max(0, medicalTotal - medicalUsed)} / ${medicalTotal}</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Pending Requests</p>
+                    <h2>${leaves.filter(l => l.status === "Pending").length}</h2>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3>Apply for Leave</h3>
+                <div id="notice" class="notice"></div>
+
+                <form id="leaveForm" class="leave-form">
+                    <div class="field">
+                        <label>Employee Name</label>
+                        <input value="${escapeHTML(currentUser.name)}" disabled>
+                    </div>
+
+                    <div class="field">
+                        <label>Email Address</label>
+                        <input value="${escapeHTML(currentUser.email)}" disabled>
+                    </div>
+
+                    <div class="field">
+                        <label>Leave Type</label>
+                        <select id="leaveType" required>
+                            <option value="Casual Leave">Casual Leave</option>
+                            <option value="Medical Leave">Medical Leave</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Start Date</label>
+                        <input type="date" id="startDate" required>
+                    </div>
+
+                    <div class="field">
+                        <label>End Date</label>
+                        <input type="date" id="endDate" required>
+                    </div>
+
+                    <div class="field full">
+                        <label>Reason for Leave</label>
+                        <textarea id="reason" required placeholder="Explain your reason for leave"></textarea>
+                    </div>
+
+                    <div class="full">
+                        <button class="primary-btn" type="submit">Submit Leave Request</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel">
+                <h3>My Leave History</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Leave Type</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Days</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                                <th>Manager Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${leaves.length ? leaves.map(l => `
+                                <tr>
+                                    <td>${escapeHTML(l.leaveType)}</td>
+                                    <td>${formatDate(l.startDate)}</td>
+                                    <td>${formatDate(l.endDate)}</td>
+                                    <td>${daysBetween(l.startDate, l.endDate)}</td>
+                                    <td>${escapeHTML(l.reason)}</td>
+                                    <td>${statusBadge(l.status)}</td>
+                                    <td>${escapeHTML(l.rejectionReason || (l.status === "Approved" ? "Approved" : "-"))}</td>
+                                </tr>
+                            `).join("") : `
+                                <tr><td colspan="7" class="empty">No leave requests yet.</td></tr>
+                            `}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    `;
+
+    document.getElementById("logoutBtn").onclick = () => logout();
+    document.getElementById("leaveForm").addEventListener("submit", submitLeave);
+
+    const today = new Date().toISOString().split("T")[0];
+    document.getElementById("startDate").min = today;
+    document.getElementById("endDate").min = today;
+
+    document.getElementById("startDate").addEventListener("change", event => {
+        document.getElementById("endDate").min = event.target.value;
+    });
+}
+
+async function submitLeave(event) {
+    event.preventDefault();
+
+    const leaveType = document.getElementById("leaveType").value;
+    const startDate = document.getElementById("startDate").value;
+    const endDate = document.getElementById("endDate").value;
+    const reason = document.getElementById("reason").value.trim();
+
+    if (endDate < startDate) {
+        showMessage("End date cannot be earlier than start date.");
+        return;
+    }
+
+    const days = daysBetween(startDate, endDate);
+
+    const used = leaves
+        .filter(l => l.leaveType === leaveType && l.status === "Approved")
+        .reduce((sum, l) => sum + daysBetween(l.startDate, l.endDate), 0);
+
+    const total = leaveType === "Casual Leave" ? 12 : 10;
+
+    if (used + days > total) {
+        showMessage(`You only have ${Math.max(0, total - used)} days remaining for ${leaveType}.`);
+        return;
+    }
+
+    try {
+        const button = event.submitter;
+        button.disabled = true;
+        button.textContent = "Submitting...";
+
+        await api("/leaves", {
+            method: "POST",
+            body: JSON.stringify({
+                leaveType,
+                startDate,
+                endDate,
+                reason
+            })
+        });
+
+        await renderDashboard();
+        showMessage("Your leave request has been submitted successfully!", "success");
+    } catch (error) {
+        showMessage(error.message);
+        const button = event.submitter;
+        if (button) {
+            button.disabled = false;
+            button.textContent = "Submit Leave Request";
+        }
+    }
 }
 
 function renderManager() {
-  const container = $("managerHistory");
-  container.innerHTML = "";
+    app.innerHTML = `
+        <main class="dashboard">
+            <header class="topbar">
+                <h2>Leave Management System</h2>
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </header>
 
-  const filter = $("managerFilter").value.trim().toLowerCase();
+            <section class="welcome">
+                <h2>Welcome, ${escapeHTML(currentUser.name)}!</h2>
+                <p>Manager Dashboard · ${escapeHTML(currentUser.email)}</p>
+            </section>
 
-  const matching = leaves.filter(l =>
-    !filter || (l.employeeEmail || "").toLowerCase().includes(filter)
-  );
+            <section class="stats">
+                <div class="stat-card">
+                    <p>Total Requests</p>
+                    <h2>${leaves.length}</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Pending Requests</p>
+                    <h2>${leaves.filter(l => l.status === "Pending").length}</h2>
+                </div>
+                <div class="stat-card">
+                    <p>Approved Requests</p>
+                    <h2>${leaves.filter(l => l.status === "Approved").length}</h2>
+                </div>
+            </section>
 
-  if (matching.length === 0) {
-    container.appendChild(makeElement("p", "No matching leave requests."));
-    return;
-  }
+            <section class="panel">
+                <h3>Employee Leave Requests</h3>
+                <div id="notice" class="notice"></div>
 
-  matching.sort((a, b) =>
-    new Date(b.createdAt || b.startDate) -
-    new Date(a.createdAt || a.startDate)
-  );
+                <div class="field">
+                    <label>Search by employee name or email</label>
+                    <input id="managerFilter" placeholder="Search employees...">
+                </div>
 
-  matching.forEach(leave => {
-    const wrapper = makeElement("section");
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Email</th>
+                                <th>Leave Type</th>
+                                <th>Dates</th>
+                                <th>Days</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="managerRows"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    `;
 
-    wrapper.appendChild(createLeaveCard(leave, true));
+    document.getElementById("logoutBtn").onclick = () => logout();
 
-    const past = leaves.filter(old =>
-      old._id !== leave._id &&
-      (old.employeeEmail || "").toLowerCase() ===
-      (leave.employeeEmail || "").toLowerCase()
-    ).sort((a, b) =>
-      new Date(b.startDate) - new Date(a.startDate)
+    document.getElementById("managerFilter").addEventListener("input", filterManagerRows);
+
+    filterManagerRows();
+}
+
+function filterManagerRows() {
+    const search = document.getElementById("managerFilter").value.toLowerCase();
+
+    const filtered = leaves.filter(l =>
+        l.employeeName.toLowerCase().includes(search) ||
+        l.employeeEmail.toLowerCase().includes(search)
     );
 
-    const history = makeElement("details");
-    history.style.margin = "12px 0";
+    const rows = document.getElementById("managerRows");
 
-    history.appendChild(
-      makeElement("summary", "View this employee's past leave")
-    );
+    rows.innerHTML = filtered.length ? filtered.map(l => `
+        <tr>
+            <td>${escapeHTML(l.employeeName)}</td>
+            <td>${escapeHTML(l.employeeEmail)}</td>
+            <td>${escapeHTML(l.leaveType)}</td>
+            <td>${formatDate(l.startDate)} – ${formatDate(l.endDate)}</td>
+            <td>${daysBetween(l.startDate, l.endDate)}</td>
+            <td>${escapeHTML(l.reason)}</td>
+            <td>${statusBadge(l.status)}</td>
+            <td>
+                ${l.status === "Pending" ? `
+                    <button class="action-btn approve" data-id="${escapeHTML(l._id)}" data-action="approve">
+                        Approve
+                    </button>
+                    <button class="action-btn reject" data-id="${escapeHTML(l._id)}" data-action="reject">
+                        Reject
+                    </button>
+                ` : escapeHTML(l.reviewer || "-")}
+            </td>
+        </tr>
+    `).join("") : `
+        <tr><td colspan="8" class="empty">No leave requests found.</td></tr>
+    `;
 
-    if (past.length === 0) {
-      history.appendChild(makeElement("p", "No previous requests."));
+    rows.querySelectorAll("button[data-action]").forEach(button => {
+        button.addEventListener("click", () => {
+            updateStatus(button.dataset.id, button.dataset.action);
+        });
+    });
+}
+
+async function updateStatus(id, action) {
+    let status;
+    let rejectionReason = "";
+
+    if (action === "approve") {
+        status = "Approved";
     } else {
-      past.forEach(old =>
-        history.appendChild(createLeaveCard(old, false))
-      );
+        status = "Declined";
+        rejectionReason = prompt("Enter the reason for rejecting this leave request:");
+
+        if (rejectionReason === null) return;
+
+        if (!rejectionReason.trim()) {
+            showMessage("Please enter a rejection reason.");
+            return;
+        }
     }
 
-    wrapper.appendChild(history);
-    container.appendChild(wrapper);
-  });
+    try {
+        await api(`/leaves/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+                status,
+                rejectionReason
+            })
+        });
+
+        await renderDashboard();
+
+        showMessage(`Leave request ${status.toLowerCase()} successfully.`, "success");
+    } catch (error) {
+        showMessage(error.message);
+    }
 }
 
-// Updated function: sends rejection reason to the server.
-async function updateStatus(id, status, reviewer, rejectionReason) {
-  if (!reviewer.trim()) {
-    alert("Please enter the manager's name.");
-    return;
-  }
-
-  if (status === "Declined" && !rejectionReason.trim()) {
-    alert("Please enter a rejection reason.");
-    return;
-  }
-
-  try {
-    const result = await api("/api/leaves/" + id, {
-      method: "PATCH",
-      body: JSON.stringify({
-        status,
-        reviewer: reviewer.trim(),
-        rejectionReason: rejectionReason.trim()
-      })
-    });
-
-    showMessage(result.message || "Request updated.");
-
-    await loadLeaves();
-  } catch (error) {
-    showMessage("Could not update request: " + error.message);
-  }
+// START APPLICATION
+if (token && currentUser) {
+    renderDashboard();
+} else {
+    renderAuth();
 }
-
-// Student leave application form.
-$("leaveForm").addEventListener("submit", async event => {
-  event.preventDefault();
-
-  const employeeName = $("employeeName").value.trim();
-  const email = $("employeeEmail").value.trim().toLowerCase();
-  const leaveType = $("leaveType").value;
-  const startDate = $("startDate").value;
-  const endDate = $("endDate").value;
-  const reason = $("reason").value.trim();
-
-  if (!reason) {
-    alert("Please enter your reason for leave.");
-    return;
-  }
-
-  if (endDate < startDate) {
-    alert("End date cannot be before the start date.");
-    return;
-  }
-
-  const requestedDays = daysBetween(startDate, endDate);
-
-  const used = leaves
-    .filter(l =>
-      (l.employeeEmail || "").toLowerCase() === email &&
-      l.leaveType === leaveType &&
-      l.status === "Approved"
-    )
-    .reduce(
-      (sum, l) => sum + daysBetween(l.startDate, l.endDate),
-      0
-    );
-
-  if (used + requestedDays > POLICY[leaveType]) {
-    alert("This request exceeds the displayed leave allowance.");
-    return;
-  }
-
-  try {
-    await api("/api/leaves", {
-      method: "POST",
-      body: JSON.stringify({
-        employeeName,
-        employeeEmail: email,
-        leaveType,
-        startDate,
-        endDate,
-        reason
-      })
-    });
-
-    employeeEmail = email;
-
-    localStorage.setItem("employeeEmail", email);
-
-    $("leaveForm").reset();
-    $("employeeEmail").value = email;
-
-    await loadLeaves();
-
-    showMessage("Leave request submitted successfully. Status: Pending.");
-  } catch (error) {
-    showMessage("Could not submit request: " + error.message);
-  }
-});
-
-$("employeeEmail").value = employeeEmail;
-
-$("employeeEmail").addEventListener("change", event => {
-  employeeEmail = event.target.value.trim().toLowerCase();
-
-  localStorage.setItem("employeeEmail", employeeEmail);
-
-  render();
-});
-
-$("role").addEventListener("change", render);
-$("managerFilter").addEventListener("input", renderManager);
-$("refreshButton").addEventListener("click", loadLeaves);
-
-loadLeaves();
